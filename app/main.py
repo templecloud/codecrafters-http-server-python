@@ -78,11 +78,22 @@ def main():
                 response = (
                     response_status + CLRF
                 ).encode('utf-8')
-            
-            print(f'Response: {response}')
+        elif path.startswith('/user-agent'):
+            user_agent = headers.get('User-Agent')
+            response_status = f'HTTP/1.1 200 OK'
+            content_type_header = f'Content-Type: text/plain'
+            content_length_header = f'Content-Length: {len(user_agent)}'
+            body = user_agent
+            response = (
+                response_status + CLRF
+                + content_type_header + CLRF + content_length_header + CLRF + CLRF 
+                + (body + CLRF if body else '')
+                ).encode('utf-8')
         else:
             # curl -v http://localhost:4221/unknown
             response = (f'HTTP/1.1 404 Not Found' + CLRF +CLRF).encode('utf-8')
+        
+        print(f'Response: {response}')
 
         # Send the response to the client.
         client_socket.sendall(response)
