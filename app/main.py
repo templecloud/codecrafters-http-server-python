@@ -1,5 +1,120 @@
 import socket
 
+CLRF = "\r\n"
+
+class HTTPRequest:
+    def __init__(self, request_data):
+        request_lines = request_data.split(CLRF)
+        current_line = 1
+
+        self.request_data = request_data
+        self.verb, self.path, self.protocol = request_lines[0].split(' ')
+        self.headers = {}
+        # Extract headers (if present)
+        for line in request_lines[1:]:
+            if not line:
+                break
+            key, value = line.split(':', 1)
+            self.headers[key.strip()] = value.strip()
+            current_line += 1
+
+        self.request_body = []
+        # Extract body (if present)
+        self.request_body = request_lines[current_line+1:][0]
+
+    def get_header(self, key):
+        return self.headers.get(key)
+
+    def get_body(self):
+        return self.request_body
+
+    def get_path(self):
+        return self.path
+
+    def get_verb(self):
+        return self.verb
+
+    def get_protocol(self):
+        return self.protocol
+
+    def get_request_data(self):
+        return self.request_data
+
+    def __str__(self):
+        return f"Request Line: {self.request_line}, Headers: {self.headers}, Request Body: {self.request_body}"
+
+class HTTPResponse:
+    def __init__(self, rq: HTTPRequest):
+        self.rq = rq
+        
+        self.protocol = rq.get_protocol()
+        self.status_code = 0
+        self.reason = None
+
+        self.headers = {}
+        self.headers['Content-Length'] = 0
+
+        self.body = None
+        self.encoding = 'utf-8'
+    
+    def with_status(self, status_code, reason) -> 'HTTPResponse':
+        self.status_code = status_code
+        self.reason = reason
+        return self
+
+    def with_body(self, body: str, encoding="utf-8", content_type: str=None) -> 'HTTPResponse':
+        self.body = body
+        self.encoding = encoding
+        self.headers['Content-Length'] = len(body)
+        if content_type:
+            self.headers['Content-Type'] = content_type
+        return self
+
+    def as_http_response(self) -> str:
+        response = f'{self.protocol} {self.status_code} {self.reason}' + CLRF
+        for key, value in self.headers.items():
+            response += f'{key}: {value}' + CLRF
+        response += CLRF
+        response += self.body if self.body else ''
+        return response
+
+    def as_http_response_bytes(self) -> bytes:
+        return self.as_http_response().encode(self.encoding)
+    
+
+def handle_request(request: HTTPRequest) -> HTTPResponse:
+    path = request.get_path()
+    response : HTTPResponse = None
+    # Prepare the client response.
+    if path == '/':
+        # curl -v http://localhost:4221
+        response = HTTPResponse(request).with_status(200, 'OK')
+    elif path.startswith('/echo'):
+        echo_path_args = path.replace('/echo', '', 1)
+        if (len(echo_path_args) > 1):
+            # curl -v http://localhost:4221/echo/Hello; echo
+            rs_body = echo_path_args[1:]
+            response = HTTPResponse(request).with_status(200, 'OK')\
+                .with_body(rs_body, content_type='text/plain')
+        elif (len(request.get_body()) > 1):
+            # curl -v http://localhost:4221/echo -d 'Hello'; echo
+            rs_body = request.get_body() 
+            response = HTTPResponse(request).with_status(200, 'OK')\
+                .with_body(rs_body, content_type='text/plain')
+        else:
+            response = HTTPResponse(request).with_status(200, 'OK')
+    elif path.startswith('/user-agent'):
+        # url -v --header "User-Agent: foobar/1.2.3" http://localhost:4221/user-agent; echo
+        rs_body = request.get_header('User-Agent')
+        response =  HTTPResponse(request).with_status(200, 'OK')\
+            .with_body(rs_body, content_type='text/plain')
+    else:
+        # curl -v http://localhost:4221/unknown; echo
+        response = HTTPResponse(request).with_status(404, 'Not Found')
+
+    return response
+
+
 def main():
     print(f'Starting Server...')
 
@@ -7,96 +122,20 @@ def main():
     server_socket = socket.create_server(("localhost", 4221), reuse_port=True)
     print(f'Server is listening on {server_socket.getsockname()}...')
 
-    CLRF = "\r\n"
-
     while True:
         # Accept the client connection.
         client_socket, client_address = server_socket.accept()
         print(f'Accepted connection from {client_address}')
 
-        # Receive the request data from the client.
+        # # Receive the request data from the client.
         request_data = client_socket.recv(1024).decode('utf-8')
 
-        # Split request data into lines
-        request_lines = request_data.split(CLRF)
-        
-        # Extract and print the request line
-        request_line = request_lines[0]
-        print(f"Request Line: {request_line}")
-        verb, path, protocol = request_line.split(' ')
-        print(f'Verb: {verb}., path: {path}, protocol: {protocol}')
+        request = HTTPRequest(request_data)
+        response = handle_request(request)
 
-        # Initialize headers dictionary
-        headers = {}
-        current_line = 1
-        # Parse Headers
-        for line in request_lines[1:]:
-            if not line:
-                break
-            key, value = line.split(':', 1)
-            headers[key.strip()] = value.strip()
-            print(f'Header: {key} = {value}')
-            current_line += 1
-
-        # Extract and print the request body (if present)
-        request_body = request_lines[current_line+1:]
-        print(f"Request Body: {request_body}")
-
-        # Prepare the client response.
-        if path == '/':
-            # curl -v http://localhost:4221
-            response = (f'HTTP/1.1 200 OK' + CLRF + CLRF).encode('utf-8')
-        elif path.startswith('/echo'):
-            # curl -v http://localhost:4221/echo/Hello; echo
-            echo_path_args = path.replace('/echo', '', 1)
-            print(f'Echo Path Args: {echo_path_args}')
-            if (len(echo_path_args) > 1):
-                echo_path_args = echo_path_args[1:]
-                print(f'Request Url Path...')
-                response_status = f'HTTP/1.1 200 OK'
-                content_type_header = f'Content-Type: text/plain'
-                content_length_header = f'Content-Length: {len(echo_path_args)}'
-                body = echo_path_args
-                response = (
-                    response_status + CLRF
-                    + content_type_header + CLRF + content_length_header + CLRF + CLRF 
-                    + (body + CLRF if body else '')
-                    ).encode('utf-8')
-            elif (len(request_body[0]) > 1):
-                 # curl -v http://localhost:4221/echo -d 'Hello'; echo
-                response_status = f'HTTP/1.1 200 OK'
-                content_type_header = f'Content-Type: text/plain'
-                content_length_header = f'Content-Length: {len(request_body[0])}'
-                body = request_body[0]
-                response = (
-                    response_status + CLRF
-                    + content_type_header + CLRF + content_length_header + CLRF + CLRF 
-                    + (body + CLRF if body else '')
-                    ).encode('utf-8')
-            else:
-                response_status = f'HTTP/1.1 200 OK'
-                response = (
-                    response_status + CLRF
-                ).encode('utf-8')
-        elif path.startswith('/user-agent'):
-            user_agent = headers.get('User-Agent')
-            response_status = f'HTTP/1.1 200 OK'
-            content_type_header = f'Content-Type: text/plain'
-            content_length_header = f'Content-Length: {len(user_agent)}'
-            body = user_agent
-            response = (
-                response_status + CLRF
-                + content_type_header + CLRF + content_length_header + CLRF + CLRF 
-                + (body + CLRF if body else '')
-                ).encode('utf-8')
-        else:
-            # curl -v http://localhost:4221/unknown
-            response = (f'HTTP/1.1 404 Not Found' + CLRF +CLRF).encode('utf-8')
-        
-        print(f'Response: {response}')
 
         # Send the response to the client.
-        client_socket.sendall(response)
+        client_socket.sendall(response.as_http_response_bytes())
 
         # Gracefully shutdown and close the connection.
         client_socket.shutdown(socket.SHUT_RDWR)
