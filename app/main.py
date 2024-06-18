@@ -1,4 +1,6 @@
 import socket
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 CLRF = "\r\n"
 
@@ -87,7 +89,7 @@ def handle_request(request: HTTPRequest) -> HTTPResponse:
     response : HTTPResponse = None
     # Prepare the client response.
     if path == '/':
-        # curl -v http://localhost:4221
+        # curl -v http://localhost:4221; echo
         response = HTTPResponse(request).with_status(200, 'OK')
     elif path.startswith('/echo'):
         echo_path_args = path.replace('/echo', '', 1)
@@ -114,32 +116,56 @@ def handle_request(request: HTTPRequest) -> HTTPResponse:
 
     return response
 
-
-def main():
-    print(f'Starting Server...')
-
-    # Open a TCP socket on localhost:4221 and wait for client connections
-    server_socket = socket.create_server(("localhost", 4221), reuse_port=True)
-    print(f'Server is listening on {server_socket.getsockname()}...')
-
-    while True:
-        # Accept the client connection.
-        client_socket, client_address = server_socket.accept()
-        print(f'Accepted connection from {client_address}')
-
+def handle_client(client_socket, client_address):
+    print(f'Accepted connection from {client_address}')
+    try:
         # # Receive the request data from the client.
         request_data = client_socket.recv(1024).decode('utf-8')
 
         request = HTTPRequest(request_data)
         response = handle_request(request)
 
-
         # Send the response to the client.
         client_socket.sendall(response.as_http_response_bytes())
 
+    finally:
         # Gracefully shutdown and close the connection.
         client_socket.shutdown(socket.SHUT_RDWR)
         client_socket.close()
+
+
+def main():
+    # Dertermine with to use thread pool mode or spawn a new thread for each client connection.
+    # NB: TODO: Add an async mode using asyncio.
+    thread_pool_mode = True
+
+    print(f'Starting Server.. ')
+    print(f'Thread Pool Mode: {thread_pool_mode}')
+
+    # Open a TCP socket on localhost:4221 and wait for client connections
+    server_socket = socket.create_server(("localhost", 4221), reuse_port=True)
+    print(f'Server is listening on {server_socket.getsockname()}...')
+
+    if thread_pool_mode:
+        while True:
+            # Accept the client connection.
+            client_socket, client_address = server_socket.accept()
+
+            # Start a new thread to handle the client connection
+            client_handler = threading.Thread(
+                target=handle_client,
+                args=(client_socket, client_address)
+            )
+            client_handler.start()
+    else:
+        # Create a ThreadPoolExecutor to manage a pool of threads
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            while True:
+                # Accept the client connection.
+                client_socket, client_address = server_socket.accept()
+                
+                # Submit the client handling function to the thread pool
+                executor.submit(handle_client, client_socket, client_address)
 
 
 if __name__ == "__main__":
