@@ -95,8 +95,6 @@ class HttpContext:
 
 def handle_request(context: HttpContext, request: HTTPRequest) -> HTTPResponse:
     path = request.get_path()
-    print(f'Verb: {request.get_verb()}')
-    print(f'Handling request for path: {path}')
     response : HTTPResponse = None
     # Prepare the client response.
     if path == '/':
@@ -170,6 +168,12 @@ def handle_client(context: HttpContext, client_socket, client_address):
 
         request = HTTPRequest(request_data)
         response = handle_request(context, request)
+
+        encoding = request.get_header('Accept-Encoding')
+        if encoding and encoding == 'gzip':
+            # Compress the response body using gzip encoding
+            # import gzip
+            response.headers['Content-Encoding'] = 'gzip'
 
         # Send the response to the client.
         client_socket.sendall(response.as_http_response_bytes())
