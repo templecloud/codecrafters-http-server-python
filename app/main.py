@@ -95,6 +95,8 @@ class HttpContext:
 
 def handle_request(context: HttpContext, request: HTTPRequest) -> HTTPResponse:
     path = request.get_path()
+    print(f'Verb: {request.get_verb()}')
+    print(f'Handling request for path: {path}')
     response : HTTPResponse = None
     # Prepare the client response.
     if path == '/':
@@ -115,13 +117,14 @@ def handle_request(context: HttpContext, request: HTTPRequest) -> HTTPResponse:
         else:
             response = HTTPResponse(request).with_status(200, 'OK')
     elif path.startswith('/user-agent'):
-        # url -v --header "User-Agent: foobar/1.2.3" http://localhost:4221/user-agent; echo
+        # c
         rs_body = request.get_header('User-Agent')
         response =  HTTPResponse(request).with_status(200, 'OK')\
             .with_body(rs_body, encoding="utf-8", content_type='text/plain')
-    elif path.startswith('/files'):
+    elif request.get_verb() == 'GET' and path.startswith('/files'):
+        print(f'GET request for file: {path}')
         path_parts = path.split('/')
-        if len(path_parts) > 1:
+        if len(path_parts) == 3:
             file_path = path_parts[2]
             try:
                 # echo -n 'Hello, World!' > /tmp/foo
@@ -138,6 +141,21 @@ def handle_request(context: HttpContext, request: HTTPRequest) -> HTTPResponse:
                 response = HTTPResponse(request).with_status(500, 'Internal Server Error')
         else:
             response = HTTPResponse(request).with_status(404, 'Not Found')
+    elif request.get_verb() == 'POST' and path.startswith('/files'):
+        print(f'POST request for file: {path}')
+        path_parts = path.split('/')
+        if len(path_parts) == 3:
+            file_path = path_parts[2]
+            try:
+                # curl -i -X POST http://localhost:4221/files/foo -d 'Hello, World!'
+                # curl -v --data "12345" -H "Content-Type: application/octet-stream" http://localhost:4221/files/file_123
+                with open(f'{context.directory}/{file_path}', 'w') as file:
+                    file.write(request.get_body())
+                    response = HTTPResponse(request).with_status(201, 'Created')
+            except Exception as e:
+                print(f"Error writing file: {e}")
+                response = HTTPResponse(request).with_status(500, 'Internal Server Error')
+        pass
     else:
         # curl -v http://localhost:4221/unknown; echo
         response = HTTPResponse(request).with_status(404, 'Not Found')
