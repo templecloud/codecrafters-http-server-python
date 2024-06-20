@@ -169,11 +169,14 @@ def handle_client(context: HttpContext, client_socket, client_address):
         request = HTTPRequest(request_data)
         response = handle_request(context, request)
 
-        encoding = request.get_header('Accept-Encoding')
-        if encoding and encoding == 'gzip':
-            # Compress the response body using gzip encoding
-            # import gzip
-            response.headers['Content-Encoding'] = 'gzip'
+        encodings = request.get_header('Accept-Encoding')
+        encoding_list = encodings.split(',') if encodings else []
+        for encoding in encoding_list:
+            
+            if encoding and encoding.strip().lower() == 'gzip':
+                # Compress the response body using gzip encoding
+                # import gzip
+                response.headers['Content-Encoding'] = 'gzip'
 
         # Send the response to the client.
         client_socket.sendall(response.as_http_response_bytes())
