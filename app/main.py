@@ -102,7 +102,7 @@ class HttpResponse:
                 self.with_body(gzip_string(self.body), content_type='text/plain')
                 self.headers['Content-Encoding'] = 'gzip'
                 body_bytes = self.body
-            else :
+            else:
                 body_bytes = self.body.encode(self.encoding)
 
         headers_bytes: bytes = b''
@@ -227,7 +227,7 @@ def handle_response(context: HttpContext, response: HttpResponse) -> HttpRespons
         if encoding and encoding.strip().lower() == 'gzip':
             # curl -v -H "Accept-Encoding: gzip" http://localhost:4221/echo/abc | hexdump -C
             # Compress the response body using gzip encoding
-            response.encoding = encoding
+            response.encoding = 'gzip'
     return response
 
 
