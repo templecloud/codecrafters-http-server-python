@@ -180,7 +180,6 @@ def handle_request(context: HttpContext, request: HttpRequest) -> HttpResponse:
         response =  HttpResponse(request).with_status(200, 'OK')\
             .with_body(rs_body, content_type='text/plain')
     elif request.get_verb() == 'GET' and path.startswith('/files'):
-        print(f'GET request for file: {path}')
         path_parts = path.split('/')
         if len(path_parts) == 3:
             file_path = path_parts[2]
@@ -190,12 +189,13 @@ def handle_request(context: HttpContext, request: HttpRequest) -> HttpResponse:
                 with open(f'{context.directory}/{file_path}', 'r') as file:
                     body = file.read()
                     response = HttpResponse(request).with_status(200, 'OK')\
-                        .with_body(body, encoding='utf-8', content_type='application/octet-stream')
+                        .with_body(body, content_type='application/octet-stream')
             except FileNotFoundError:
                 # curl -i http://localhost:4221/files/non_existant_file
                 response = HttpResponse(request).with_status(404, 'Not Found')
             except Exception as e:
                 print(f"Error reading file: {e}")
+                traceback.print_exc()
                 response = HttpResponse(request).with_status(500, 'Internal Server Error')
         else:
             response = HttpResponse(request).with_status(404, 'Not Found')
@@ -211,8 +211,8 @@ def handle_request(context: HttpContext, request: HttpRequest) -> HttpResponse:
                     response = HttpResponse(request).with_status(201, 'Created')
             except Exception as e:
                 print(f"Error writing file: {e}")
+                traceback.print_exc()
                 response = HttpResponse(request).with_status(500, 'Internal Server Error')
-        pass
     else:
         # curl -v http://localhost:4221/unknown; echo
         response = HttpResponse(request).with_status(404, 'Not Found')
@@ -247,7 +247,6 @@ def handle_client(context: HttpContext, client_socket, client_address):
     except Exception as e:
         print(f"Error handling client {client_address}: {e}")
         traceback.print_exc()
-
     finally:
         # Gracefully shutdown and close the connection.
         client_socket.shutdown(socket.SHUT_RDWR)
